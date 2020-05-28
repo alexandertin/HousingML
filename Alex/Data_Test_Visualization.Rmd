@@ -8,12 +8,6 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
-```
-
-
-Libraries
-```{r}
-library()
 
 
 ```
@@ -22,7 +16,210 @@ Import files
 
 ```{r}
 
+iowatrain = read.csv('/Users/alexandertin/Desktop/HousingML/data/train.csv')
+
+train = iowatrain
+
+iowatrim = read.csv('../datafilter/train05-23.csv')
+
+trimmed = iowatrim
 ```
+
+
+Libraries
+```{r}
+#For missingness
+library(VIM)
+library(mice)
+library(naniar)
+
+#EDA
+library(car)
+
+library(MASS)
+library(caret)
+
+library(leaps)
+
+library(dplyr)
+```
+
+
+Missingness Visualization (taken care of in Python)
+```{r}
+#Using naniar library, counting the number of features with missing variables
+n_var_miss(iowatrain)
+
+#Visualize connections with missing values
+gg_miss_upset(iowatrain, nsets=n_var_miss(iowatrain))
+
+
+gg_miss_which(iowatrain)
+
+
+
+```
+
+
+Iowatrim data cleaning area
+```{r}
+
+iowatrim$MSSubClass = as.factor(iowatrim$MSSubClass)
+
+```
+
+
+
+Features:
+Continuous (21)
+LotFrontage, LotArea, YearBuilt, YearRemodAdd, MasVnrArea, TotalBsmtSF, X1stFlrSF, GrLivArea, GarageYrBlt, GarageArea, WoodDeckSF, OpenPorchSF, EnclosedPorch, X3SsnPorch, ScreenPorch, MiscVal, YrSold, SalePrice, House_Age, Remod_Age, Garage_Age
+
+
+Data manipulation
+```{r}
+#Convert MSSubClass to factor
+trimmed$MSSubClass = as.factor(trimmed$MSSubClass)
+trimmed$OverallQual = as.factor(trimmed$OverallQual)
+trimmed$OverallCond = as.factor(trimmed$OverallCond)
+trimmed$Alley = as.factor(trimmed$Alley)
+
+#Take log of Sale Price, 
+trimmed$SalePrice = log(trimmed$SalePrice)
+trimmed$GrLivArea = log(trimmed$GrLivArea)
+trimmed$LotArea = log(trimmed$LotArea)
+
+summary(trimmed)
+str(train)
+
+```
+
+
+```{r}
+colSums(is.na(train))
+```
+
+
+ANOVA tests
+
+```{r}
+factorlist = sapply(iowatrim, function(x) is.factor(x))
+
+iowafactor <- iowatrim[,factorlist]
+
+which(sapply(iowafactor, function(x) length(unique(x))<2))
+
+bsmtlist = colnames(iowatrim[grep('Bsmt',colnames(iowatrim))])
+bsmtlist
+
+
+
+
+
+regfit.full=regsubsets(SalePrice ~., iowatrim, )
+
+
+
+
+# Full model
+housing = lm(SalePrice ~ . -LotFrontage, data=iowatrim)
+
+
+
+#Model will all features except Basement
+housing.nobsmt = lm(SalePrice ~ . - BsmtQual - BsmtCond - BsmtExposure - BsmtFinType1 - BsmtFinType2 - TotalBsmtSF - BsmtFullBath - BsmtHalfBath, data=iowatrim)
+
+
+#Model with all features except Garage
+
+
+
+
+
+
+```
+
+
+
+Basic House - Lot Size, bedrooms, bathrooms, age, kitchen
+```{r}
+eng.train = trimmed %>% mutate(., HouseAge = max(YearBuilt)-YearBuilt, TotBath = FullBath + HalfBath*0.5) 
+
+
+basic = eng.train %>% select(., LotArea, GrLivArea, BedroomAbvGr, KitchenAbvGr,HouseAge, TotBath, SalePrice)
+
+```
+
+
+Linear Regression of Basic House
+```{r}
+basic.model = lm(SalePrice~., data = basic)
+
+summary(basic.model)
+plot(basic.model)
+influencePlot(basic.model)
+vif(basic.model)
+```
+
+Experiment 1
+```{r}
+experiment1 = eng.train %>% select(., LotArea, GrLivArea, BedroomAbvGr, KitchenAbvGr,HouseAge, TotBath,  SalePrice, OverallQual)
+
+exp1.model = lm(SalePrice~., data = experiment1)
+
+summary(exp1.model)
+plot(exp1.model)
+influencePlot(exp1.model)
+vif(exp1.model)
+
+
+```
+
+Partial f-test to compare 
+```{r}
+anova(basic.model, experiment2)
+```
+
+
+
+Experiment 2 (Tori's Selection)
+```{r}
+experiment2 = eng.train %>% select(., MSSubClass, MSZoning, LotArea, Alley, Utilities, Neighborhood, Condition1, BldgType, YearBuilt, YearRemodAdd, Exterior1st, TotalBsmtSF, Heating, CentralAir, Fireplaces, GarageType, GarageArea, GrLivArea, BedroomAbvGr, KitchenAbvGr,HouseAge, TotBath,  SalePrice, OverallQual)
+
+exp2.model = lm(SalePrice~., data = experiment2)
+
+summary(exp2.model)
+plot(exp2.model)
+influencePlot(exp2.model)
+vif(exp2.model)
+
+
+```
+
+
+
+
+
+
+
+
+
+```{r}
+toriselection = c("MSSubClass", "MSZoning", "LotFrontage", "Alley", "Utilities", "Neighborhood", "Condition1", "BldgType", "OverallQual", "YearBuilt", "YearRemodAdd", "Exterior1st", "TotalBsmtSF", "Heating", "CentralAir", "X1stFlrSF", "X2ndFlrSF", "Fireplaces", "FireplaceQu", "GarageType", "GarageArea", "SaleType", "SaleCondition")
+
+iowatrim %>% select(., toriselection)
+
+
+```
+
+
+
+
+
+
+
+
+
+
 
 
 
