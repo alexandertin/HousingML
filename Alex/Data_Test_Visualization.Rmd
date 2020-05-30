@@ -16,11 +16,11 @@ Import files
 
 ```{r}
 
-iowatrain = read.csv('/Users/alexandertin/Desktop/HousingML/data/train.csv')
+iowatrain = read.csv('/Users/alexandertin/Desktop/HousingML/data/train.csv', row.names = 'Id')
 
 train = iowatrain
 
-iowatrim = read.csv('../datafilter/train05-23.csv')
+iowatrim = read.csv('../datafilter/train05-23.csv', row.names = 'Id')
 
 trimmed = iowatrim
 ```
@@ -61,14 +61,6 @@ gg_miss_which(iowatrain)
 ```
 
 
-Iowatrim data cleaning area
-```{r}
-
-iowatrim$MSSubClass = as.factor(iowatrim$MSSubClass)
-
-```
-
-
 
 Features:
 Continuous (21)
@@ -91,11 +83,14 @@ trimmed$LotArea = log(trimmed$LotArea)
 summary(trimmed)
 str(train)
 
-```
+eng.train = trimmed %>% mutate(., HouseAge = max(YearBuilt)-YearBuilt, TotBath = FullBath + HalfBath*0.5, LotFrontage = ifelse(is.na(LotFrontage), mean(LotFrontage, na.rm=TRUE),LotFrontage)) 
+
+drops <- c('X', 'FullBath','HalfBath','YearBuilt')
+eng.train = eng.train[ , !(names(eng.train) %in% drops)]
 
 
-```{r}
-colSums(is.na(train))
+
+
 ```
 
 
@@ -130,9 +125,7 @@ housing.nobsmt = lm(SalePrice ~ . - BsmtQual - BsmtCond - BsmtExposure - BsmtFin
 
 
 #Model with all features except Garage
-
-
-
+housing.nogarage = 
 
 
 
@@ -142,8 +135,6 @@ housing.nobsmt = lm(SalePrice ~ . - BsmtQual - BsmtCond - BsmtExposure - BsmtFin
 
 Basic House - Lot Size, bedrooms, bathrooms, age, kitchen
 ```{r}
-eng.train = trimmed %>% mutate(., HouseAge = max(YearBuilt)-YearBuilt, TotBath = FullBath + HalfBath*0.5) 
-
 
 basic = eng.train %>% select(., LotArea, GrLivArea, BedroomAbvGr, KitchenAbvGr,HouseAge, TotBath, SalePrice)
 
@@ -159,6 +150,106 @@ plot(basic.model)
 influencePlot(basic.model)
 vif(basic.model)
 ```
+
+Regression Tree
+```{r}
+library(tree)
+
+#Creating train set on 80% of data
+set.seed(0)
+train80 = sample(1:nrow(eng.train),8*nrow(eng.train)/10)
+
+#Training tree
+basic.tree = tree(SalePrice ~ ., eng.train, subset = train80)
+
+#Results of train tree
+summary(basic.tree)
+plot(basic.tree)
+text(basic.tree, pretty = 0)
+basic.tree
+
+#Prune tree
+prune.basic = prune.tree(basic.tree)
+par(mfrow = c(1,1))
+plot(prune.basic)
+
+
+#Caculate and asses MSE of test data on overall tree
+
+
+```
+
+
+Random Forest
+```{r}
+library(randomForest)
+
+#Fitting random forest to train set
+set.seed(0)
+rf.train = randomForest(SalePrice ~ ., data = eng.train, subset = train80, na.action = na.exclude, ntree = 1000 , importance = TRUE)
+
+rf.train
+
+```
+
+Vary the number of variables used at each step of random forest procedure
+```{r}
+set.seed(0)
+oob.err=numeric(73)
+for (mtry in 1:73){
+  fit = randomForest(SalePrice ~ ., data=eng.train[train80, ], mtry=mtry, na.action = na.exclude)
+  oob.err[mtry] = fit$mse[500]
+  cat("We're performing interation", mtry, "\n")
+}
+
+```
+
+```{r}
+plot(1:78, oob.err, pch = 16, type = 'b',
+     xlab = "Variables Considered at Each Split",
+     ylab = "OOB Mean Squared Error",
+     main = "Random Forest OOB Error Rates\nby # of Variables")
+
+```
+
+```{r}
+importance(rf.train)
+varImpPlot(rf.train)
+```
+
+
+Boosting
+```{r}
+library(gbm)
+
+#`10000 trees
+set.seed(0)
+boost.train = gbm(SalePrice ~ ., data = eng.train[train80, ],
+                  distribution = 'gaussian',
+                  n.trees = 10000,
+                  interaction.depth=4)
+
+#Look at the relative influence
+par(mfrow = c(1,1))
+summary(boost.train)
+
+# Making prediction on test set
+n.trees = seq(from = 100, to = 10000, by = 100)
+predmat = predict(boost.train, newdata = eng.train[-train80, ], n.trees = n.trees)
+
+
+dim(predmat)
+
+#Calculate boosted errors
+par(mfrow = c(1,1))
+berr = with(eng.train[-train80, ], apply((predmat - SalePrice)^2,2,mean))
+plot(n.trees, berr, pch=16,
+     ylab = "Mean Squared Error",
+     xlab = "# Trees",
+     main = "Boosting Test Error")
+abline(h=min(oob.err), col='red')
+```
+
 
 Experiment 1
 ```{r}
@@ -197,19 +288,17 @@ vif(exp2.model)
 
 
 
-
-
-
-
-
+Random Forest
 
 ```{r}
-toriselection = c("MSSubClass", "MSZoning", "LotFrontage", "Alley", "Utilities", "Neighborhood", "Condition1", "BldgType", "OverallQual", "YearBuilt", "YearRemodAdd", "Exterior1st", "TotalBsmtSF", "Heating", "CentralAir", "X1stFlrSF", "X2ndFlrSF", "Fireplaces", "FireplaceQu", "GarageType", "GarageArea", "SaleType", "SaleCondition")
-
-iowatrim %>% select(., toriselection)
+# set.seed(0)
+# rf.train1 = sample(1:nrow(trimmed), 8*nrow(trimmed)/10) # train indice
+# rf.test1 = trimmed[-rf.train1, ] #test dataset
+# response.test = trimmed[-rf.train1, 'SalePrice']
 
 
 ```
+
 
 
 
